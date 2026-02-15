@@ -4,35 +4,47 @@ export default async (req) => {
   const { searchParams } = new URL(req.url);
   const targetUrl = searchParams.get("url");
 
-  if (!targetUrl) return new Response("URL Missing", { status: 400 });
+  if (!targetUrl) return new Response("Missing URL", { status: 400 });
 
   try {
+    const method = req.method;
+    const body = method === "POST" ? await req.text() : null;
+
+    // Strict headers: AWS Lambda-r kono trace thakbe na eikhane
     const headers = new Headers();
-    // Shudu dorkari headers gula pass korbo
     headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36");
     headers.set("Accept", "application/json, text/plain, */*");
+    headers.set("Accept-Language", "en-US,en;q=0.9");
     headers.set("Content-Type", "application/json");
 
-    // Lambda theke asha Auth ba Cookie thakle sheta pass koro
+    // Shudhu Auth ba Cookie thakle Lambda theke nao, baki shob discard
     const auth = req.headers.get("Authorization");
     if (auth) headers.set("Authorization", auth);
     
     const cookie = req.headers.get("Cookie");
     if (cookie) headers.set("Cookie", cookie);
 
+    // [IMPORTANT] RedX jate bujhte na pare eita proxy, tai ashol origin set koro
+    headers.set("Origin", "https://redx.com.bd");
+    headers.set("Referer", "https://redx.com.bd/");
+
     const response = await fetch(targetUrl, {
-      method: req.method,
+      method: method,
       headers: headers,
-      body: req.method === "POST" ? await req.text() : null,
-      // IMPORTANT: Cloudflare bypass korar jonno eita dorkar
+      body: body,
       redirect: "follow"
     });
 
-    return new Response(await response.text(), {
+    const data = await response.text();
+    
+    return new Response(data, {
       status: response.status,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      headers: { 
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*"
+      }
     });
-  } catch (e) {
-    return new Response(e.message, { status: 500 });
+  } catch (error) {
+    return new Response(error.message, { status: 500 });
   }
 };
